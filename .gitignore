@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# 虚拟环境
+.venv/
+venv/
+
+# 漏洞库与生成数据（体积大，不入库；release/ 下的预置库除外）
+data/
+latest-cache.json
+*.zip
+!release/*.zip
+
+# IDE / 系统
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# 测试与工具
+.pytest_cache/
+.coverage
+htmlcov/

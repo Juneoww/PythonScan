@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pythonscan"
+version = "0.1.0"
+description = "内网离线检查 pip 依赖包已知漏洞的命令行工具（数据源: 本地 OSV 漏洞库）"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Juneoww" }]
+keywords = ["security", "vulnerability", "pip", "osv", "scanner"]
+
+[project.scripts]
+pythonscan = "pythonscan.cli:main"
+pythonscan-gui = "pythonscan.gui:run"
+
+[tool.setuptools.packages.find]
+include = ["pythonscan*"]

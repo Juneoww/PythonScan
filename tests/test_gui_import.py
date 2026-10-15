@@ -177,6 +177,33 @@ root.mainloop()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(list(self.work.glob(".pythonscan-import-*")), [])
 
+    def test_closed_window_is_not_owned_by_background_worker(self):
+        script = '''"""功能：复现窗口关闭后工作线程最后释放 Tk 对象的跨线程终结问题。"""
+import sys, threading, tkinter as tk
+from pythonscan import gui, db_import
+root=tk.Tk(); root.withdraw()
+app=gui.ScanGUI(root, sys.argv[2])
+started=threading.Event(); release=threading.Event()
+original=db_import.prepare_import
+def prepare(*args):
+    result=original(*args)
+    started.set(); release.wait(5)
+    return result
+db_import.prepare_import=prepare
+gui.filedialog.askopenfilename=lambda **kw:sys.argv[1]
+app._on_pick_db()
+assert started.wait(5)
+app._on_close()
+del app, root
+release.set()
+for thread in threading.enumerate():
+    if thread is not threading.current_thread():thread.join(5)
+'''
+        result = subprocess.run([sys.executable, '-c', script, str(self.raw),
+                                 str(self.work / 'child-owned.zip')], capture_output=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn(b'main thread is not in main loop', result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

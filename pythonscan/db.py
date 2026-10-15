@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 import zipfile
+import tempfile
 from datetime import date
 from pathlib import Path
 
@@ -202,11 +203,20 @@ class VulnDB:
             if expected and _sha256(index_blob) != expected:
                 raise DBError("index.json 校验失败，漏洞库可能已损坏")
             self.index = json.loads(index_blob.decode("utf-8"))
+            self._identity = None
         except Exception as exc:
             self._zf.close()
             if isinstance(exc, (ValueError, KeyError, UnicodeError, zipfile.BadZipFile, AttributeError, TypeError)):
                 raise DBError(f"漏洞库格式损坏: {exc}") from exc
             raise
+
+    @property
+    def identity(self) -> dict:
+        """从本实例打开的数据派生启用身份，不能信任输入声明的指纹。"""
+        if self._identity is None:
+            from .db_identity import identity
+            self._identity = identity(self._zf, self.manifest)
+        return dict(self._identity)
 
     @property
     def snapshot(self) -> str:
@@ -244,10 +254,9 @@ def db_info(path: str | Path | None = None) -> dict:
     path = Path(path or default_db_path())
     if not path.exists():
         raise DBError(f"漏洞库不存在: {path}")
-    with zipfile.ZipFile(path) as zf:
-        manifest = _read_manifest(zf)
-        index = json.loads(zf.read(INDEX_NAME).decode("utf-8"))
-    return dict(manifest, latest_count=len(index.get("latest") or {}))
+    with load(path) as database:
+        return dict(database.manifest, **database.identity,
+                    path=str(path.resolve()), latest_count=len(database.index.get('latest') or {}))
 
 
 def import_db(src_path: str, target: str | Path | None = None) -> dict:
@@ -340,5 +349,8 @@ def update_db(delta_path: str, target: str | Path | None = None) -> dict:
     }
     items.append((INDEX_NAME, index_blob))
     items.append((MANIFEST_NAME, _pretty_json(new_manifest)))
-    _atomic_write_zip(target, items)
-    return new_manifest
+    # 增量候选同样经过导入服务，身份与数据一起安装并保留旧版备份。
+    with tempfile.TemporaryDirectory(prefix='.pythonscan-delta-', dir=target.parent) as directory:
+        candidate = Path(directory) / 'candidate.zip'
+        _atomic_write_zip(candidate, items)
+        return import_db(str(candidate), target)

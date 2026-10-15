@@ -19,6 +19,7 @@ import zipfile
 from . import db
 from .osv import OSVError, load_osv_zip, validate_record
 from .versioning import normalize_name
+from .db_identity import file_sha256, identity, json_fingerprint, stamp_manifest
 
 
 def validate_full(path) -> dict:
@@ -95,6 +96,7 @@ class PreparedImport:
     previous_valid: bool = False
     previous_invalid: bool = False
     installed: bool = False
+    unchanged: bool = False
 
     @property
     def backup(self):
@@ -128,10 +130,14 @@ def prepare_import(src_path, target=None) -> PreparedImport:
                 raise db.DBError("原始 ZIP 与安装目标相同，请把原始文件放到其他位置后导入")
             records, snapshot = load_osv_zip(candidate)
             metadata = {"source_type": "osv-pypi-zip",
-                        "source_sha256": hashlib.sha256(candidate.read_bytes()).hexdigest(),
+                        "source_sha256": file_sha256(candidate),
+                        "source_json_sha256": json_fingerprint(candidate, raw=True),
                         "imported_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
             db.write_full_db(records, str(candidate), snapshot=snapshot, metadata=metadata)
         manifest = validate_full(candidate)
+        actual_identity = identity(candidate, manifest)
+        manifest = stamp_manifest(candidate, dict(actual_identity,
+                                  imported_at=datetime.now(timezone.utc).isoformat(timespec='seconds')))
         prepared = PreparedImport(target, candidate, manifest, temporary, same_path=same)
         if target.exists() and not same:
             # 即便旧目标损坏，也保留本次恢复副本；只有有效库才更新公开 .bak。
@@ -140,6 +146,7 @@ def prepare_import(src_path, target=None) -> PreparedImport:
             try:
                 validate_full(prepared.rollback)
                 prepared.previous_valid = True
+                prepared.unchanged = identity(prepared.rollback)['content_sha256'] == actual_identity['content_sha256']
             except db.DBError:
                 prepared.previous_invalid = True
         return prepared
@@ -153,8 +160,8 @@ def prepare_import(src_path, target=None) -> PreparedImport:
 
 def install_import(prepared: PreparedImport) -> dict:
     """调用方关闭旧数据库句柄后安装；后置加载失败会恢复本次旧文件。"""
-    if prepared.same_path:
-        return dict(prepared.manifest)
+    if prepared.same_path or prepared.unchanged:
+        return dict(db.db_info(prepared.target), unchanged=True)
     if prepared.installed:
         raise db.DBError("此导入任务已经安装")
     try:

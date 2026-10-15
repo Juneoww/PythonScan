@@ -162,23 +162,27 @@ class ScanGUI:
         self._sync_controls()
         self._set_status(t(self.lang, "gui_db_importing"), WARN)
         # 关闭窗口后仍等待准备任务释放文件句柄并清理暂存目录。
-        threading.Thread(target=self._import_worker, args=(path,), daemon=False).start()
+        threading.Thread(target=ScanGUI._import_worker,
+                         args=(path, self.db_path, self._results, self._result_lock, self._closed),
+                         daemon=False).start()
 
-    def _import_worker(self, path):
+    @staticmethod
+    def _import_worker(path, target, results, result_lock, closed):
         try:
-            prepared = db_import.prepare_import(path, self.db_path)
-            self._deliver("import", (prepared, None))
+            prepared = db_import.prepare_import(path, target)
+            ScanGUI._deliver(results, result_lock, closed, "import", (prepared, None))
         except Exception as exc:
-            self._deliver("import", (None, exc))
+            ScanGUI._deliver(results, result_lock, closed, "import", (None, exc))
 
-    def _deliver(self, kind, payload):
+    @staticmethod
+    def _deliver(results, result_lock, closed, kind, payload):
         # 此锁使关闭事件和队列交付成为一个不可分割的操作，不在工作线程调用 Tk。
-        with self._result_lock:
-            if self._closed.is_set():
+        with result_lock:
+            if closed.is_set():
                 if kind == "import" and payload[0] is not None:
                     payload[0].close()
             else:
-                self._results.put((kind, payload))
+                results.put((kind, payload))
 
     def _poll_results(self):
         if self._closed.is_set():
@@ -262,6 +266,11 @@ class ScanGUI:
             self.database = None
         self.root.after_cancel(self._poll_id)
         self.root.destroy()
+        # 错误 traceback 可能暂存 GUI 实例；先在主线程释放 Tk 引用，避免后台 GC 终结 Tcl。
+        for name, value in list(vars(self).items()):
+            if isinstance(value, (tk.Misc, tk.Variable)):
+                setattr(self, name, None)
+        self.export_buttons = []
 
     def _load_db(self, path: str, quiet: bool):
         try:
@@ -319,17 +328,19 @@ class ScanGUI:
         self._scanning = True
         self._sync_controls()
         self._set_status(t(self.lang, "gui_scanning"), WARN)
-        thread = threading.Thread(target=self._scan_worker,
-                                  args=(deps, warns, self.database, self.use_installed_var.get()), daemon=True)
+        thread = threading.Thread(target=ScanGUI._scan_worker,
+                                  args=(deps, warns, self.database, self.use_installed_var.get(),
+                                        self._results, self._result_lock, self._closed), daemon=True)
         thread.start()
 
-    def _scan_worker(self, deps, warns, database, use_installed):
+    @staticmethod
+    def _scan_worker(deps, warns, database, use_installed, results, result_lock, closed):
         try:
             result = engine.scan(deps, database, source="GUI", use_installed=use_installed)
             error = None
         except Exception as exc:  # 后台线程兜底，避免界面无响应假死
             result, error = None, exc
-        self._deliver("scan", (result, warns, error))
+        ScanGUI._deliver(results, result_lock, closed, "scan", (result, warns, error))
 
     def _scan_done(self, result, warns, error):
         self._scanning = False

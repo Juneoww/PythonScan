@@ -17,7 +17,7 @@
 1. 外网下载 [PyPI/all.zip](https://osv-vulnerabilities.storage.googleapis.com/PyPI/all.zip)，将文件传入内网，无需解压或转换。
 2. 打开开发版 GUI，点击 **导入/更新漏洞库**，选择该 ZIP。完成后立即使用新库，重启后自动加载。
 
-导入完全离线，也兼容已有 PythonScan 全量库。默认安装到 `%USERPROFILE%\.pythonscan\vulndb.zip`；启动参数 `--db` 优先，其次是 `PYTHONSCAN_DB`。替换前把上一份有效库保存为目标文件旁的 `.bak`，输入 ZIP 保持不变。恢复时关闭程序，将 `.bak` 复制回目标路径后重启。增量包继续使用 `db update`。
+导入完全离线，也兼容已有 PythonScan 全量库。默认安装到 `%USERPROFILE%\.pythonscan\vulndb.zip`；启动参数 `--db` 优先，其次是 `PYTHONSCAN_DB`。替换前把上一份有效库保存为目标文件旁的 `.bak`，输入 ZIP 保持不变。恢复时关闭程序，将 `.bak` 复制回目标路径后重启；若通过导入恢复，请先将 `.bak` 复制到其他路径再选择，以避免与新备份冲突。增量包继续使用 `db update`。
 
 ```powershell
 python -m pythonscan db import C:\Transfer\all.zip

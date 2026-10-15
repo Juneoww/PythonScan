@@ -174,6 +174,19 @@ class TestImport(unittest.TestCase):
         with self.assertRaises(db.DBError):
             db.import_db(str(source), self.live)
 
+    def test_backup_as_input_is_rejected_without_modification(self):
+        import os
+        self.full(self.live, "2.0")
+        self.full(self.backup, "1.0")
+        alias = self.work / "backup-alias.zip"
+        os.link(self.backup, alias)
+        before, backup = self.live.read_bytes(), self.backup.read_bytes()
+        for source in (self.backup, alias):
+            with self.subTest(source=source), self.assertRaises(db.DBError):
+                db.import_db(str(source), self.live)
+            self.assertEqual(self.live.read_bytes(), before)
+            self.assertEqual(self.backup.read_bytes(), backup)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -111,13 +111,16 @@ def prepare_import(src_path, target=None) -> PreparedImport:
     target = Path(target or db.default_db_path()).resolve()
     if not src.is_file():
         raise db.DBError(f"导入文件不存在: {src}")
+    backup = target.with_name(target.name + ".bak")
+    same = target.exists() and os.path.samefile(src, target)
+    if not same and backup.exists() and os.path.samefile(src, backup):
+        raise db.DBError("输入文件正是目标的 .bak 备份，请先复制到其他路径后导入，避免覆盖输入")
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = tempfile.TemporaryDirectory(prefix=".pythonscan-import-", dir=target.parent)
     directory = Path(temporary.name)
     try:
         candidate = directory / "candidate.zip"
         shutil.copyfile(src, candidate)
-        same = target.exists() and os.path.samefile(src, target)
         with zipfile.ZipFile(candidate) as archive:
             has_manifest = db.MANIFEST_NAME in archive.namelist()
         if not has_manifest:

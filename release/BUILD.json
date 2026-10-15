@@ -1,15 +1,22 @@
 {
-  "application_version": "0.2.0.dev1",
-  "source_commit": "dbd86bc",
+  "application_version": "0.2.0.dev2",
+  "source_commit": "1d926b8314217fcb0f0c36d2e0066901dac21927",
   "platform": "windows-x64",
   "python": "3.13.5",
   "pyinstaller": "6.16.0",
-  "synchronized_at": "2026-10-15T07:06:45+00:00",
+  "synchronized_at": "2026-10-15T08:25:12+00:00",
   "files": {
-    "pythonscan.exe": "21361bd3d4c73d38c4f2008429499d9f109c65270322bdc33ba2b452a33d06c5",
-    "pythonscan-gui.exe": "5f5f631585e8f414d28f16f087e2c73b1d2681359e5fc15d87a432753319754c"
+    "pythonscan.exe": "29d11f22dc165b94e92b76ebf7f1604778e5de8a59e1680159c660c015f7e516",
+    "pythonscan-gui.exe": "8cee4ba247a265d748701a34cdb78cd0d71e95fac0ad02368f841b63268d475f"
   },
   "database_embedded": false,
   "database_archive": "../../vulnerability-db/versions",
-  "note": "Copied from already verified local development artifacts; GitHub v0.1.0 release unchanged."
+  "validation": {
+    "unit_tests": 99,
+    "exe_checks": 14,
+    "cmd_launcher_chinese_space_path": true,
+    "independent_spec_review": "Approved",
+    "independent_code_quality_review": "Approved",
+    "visible_gui_review": "desktop locked; real Tk/mainloop tests passed"
+  }
 }

@@ -18,7 +18,6 @@ import sys
 import tempfile
 import urllib.request
 import zipfile
-from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from pathlib import Path
@@ -26,16 +25,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from pythonscan.db import write_delta_db, write_full_db  # noqa: E402
-from pythonscan.matching import affected_text  # noqa: E402
-from pythonscan.versioning import normalize_name  # noqa: E402
+from pythonscan.osv import load_osv_zip  # noqa: E402
 
 OSV_PYPI_EXPORT_URL = "https://osv-vulnerabilities.storage.googleapis.com/PyPI/all.zip"
 PYPI_JSON_URL = "https://pypi.org/pypi/{name}/json"
 UA = {"User-Agent": "pythonscan-sync/0.1"}
 
-SEV_RANK = {"CRITICAL": 3, "HIGH": 2, "MODERATE": 1, "MEDIUM": 1, "LOW": 0}
-ID_PRIORITY = ("CVE-", "GHSA-", "PYSEC-")
-MAX_REFERENCES = 20
 
 
 def _opener(proxy: str | None) -> urllib.request.OpenerDirector:
@@ -63,151 +58,11 @@ def download(url: str, proxy: str | None) -> Path:
     return tmp
 
 
-def _fixed_versions(entry: dict) -> list[str]:
-    fixed = []
-    for rng in entry.get("ranges") or []:
-        if str(rng.get("type") or "").upper() == "GIT":
-            continue  # GIT 区间的 fixed 是 commit SHA，不是可比较的版本号
-        for ev in rng.get("events") or []:
-            if "fixed" in ev and ev["fixed"] not in fixed:
-                fixed.append(str(ev["fixed"]))
-    return fixed
-
-
-def _slim(record: dict, entry: dict) -> dict:
-    """按包裁剪 OSV 记录：只保留该 affected 条目与展示所需字段。"""
-    level = str((record.get("database_specific") or {}).get("severity") or "").upper()
-    if level == "MEDIUM":
-        level = "MODERATE"
-    vectors = [str(s["score"]) for s in record.get("severity") or []
-               if str(s.get("type") or "").upper().startswith("CVSS") and s.get("score")]
-    summary = record.get("summary") or (record.get("details") or "").strip().split("\n")[0]
-    return {
-        "id": record.get("id", ""),
-        "aliases": list(record.get("aliases") or []),
-        "summary": summary.strip(),
-        "details": record.get("details") or "",
-        "database_specific": {"severity": level},
-        "severity": [{"type": "CVSS_V3", "score": v} for v in vectors],
-        "published": record.get("published"),
-        "modified": record.get("modified"),
-        "affected": [entry],
-        "fixed_versions": _fixed_versions(entry),
-        "affected_text": affected_text(entry),
-        "references": [r.get("url") for r in record.get("references") or [] if r.get("url")][:MAX_REFERENCES],
-        "sources": [record.get("id", "")],
-    }
-
-
-def _strip_versions(entry: dict) -> dict:
-    """affected.versions 可能是上千项的枚举，区间已足够匹配，剔除以控制库体积。"""
-    slim_entry = dict(entry)
-    slim_entry.pop("versions", None)
-    return slim_entry
-
-
-def _id_priority(rid: str) -> int:
-    for index, prefix in enumerate(ID_PRIORITY):
-        if rid.startswith(prefix):
-            return index
-    return len(ID_PRIORITY)
-
-
-def _merge_group(group: list[dict]) -> dict:
-    """同一漏洞的多来源记录（GHSA/PYSEC/OSV）合并为一条：主 ID + 别名。"""
-    primary = min((r["id"] for r in group), key=lambda rid: (_id_priority(rid), rid))
-    base = next(r for r in group if r["id"] == primary)
-    level = max((r["database_specific"]["severity"] for r in group),
-                key=lambda s: SEV_RANK.get(s, -1), default="UNKNOWN")
-    vector = next((v["score"] for r in group for v in r["severity"] if v.get("score")), None)
-
-    aliases: set = set()
-    affected_entries: list = []
-    seen_texts: set = set()
-    fixed: list = []
-    refs: list = []
-    sources: set = set()
-    for rec in group:
-        sources.add(rec["id"])
-        aliases.update([rec["id"], *rec["aliases"]])
-        fixed.extend(rec["fixed_versions"])
-        for url in rec["references"]:
-            if url not in refs:
-                refs.append(url)
-        # GHSA/PYSEC 记录的 affected 区间常完全一致（JSON 细节不同），
-        # 以区间展示文本为键去重，避免合并后出现重复区间
-        text = rec["affected_text"]
-        if text and text != "*" and text not in seen_texts:
-            seen_texts.add(text)
-            affected_entries.extend(rec["affected"])
-    if not affected_entries:  # 组内所有条目都是无区间文本
-        affected_entries = [e for r in group for e in r["affected"]]
-    segments: list = []
-    for text in sorted(seen_texts):
-        segments.extend(seg for seg in text.split("; ") if seg)
-    return {
-        "id": primary,
-        "aliases": sorted(aliases - {primary}),
-        "summary": base["summary"],
-        "details": base["details"],
-        "database_specific": {"severity": level or "UNKNOWN"},
-        "severity": [{"type": "CVSS_V3", "score": vector}] if vector else [],
-        "published": min((r["published"] for r in group if r.get("published")), default=None),
-        "modified": max((r["modified"] for r in group if r.get("modified")), default=None),
-        "affected": affected_entries,
-        "fixed_versions": sorted(set(fixed)),
-        "affected_text": "; ".join(dict.fromkeys(segments)) or "*",
-        "references": refs[:MAX_REFERENCES],
-        "sources": sorted(sources),
-    }
-
-
-def merge_package(records: list[dict]) -> list[dict]:
-    """按别名共享关系（并查集）把同包的多来源记录聚合去重。"""
-    parent = list(range(len(records)))
-
-    def find(i: int) -> int:
-        while parent[i] != i:
-            parent[i] = parent[parent[i]]
-            i = parent[i]
-        return i
-
-    key_owner: dict = {}
-    for i, rec in enumerate(records):
-        for key in {rec["id"], *rec["aliases"]}:
-            if key in key_owner:
-                root, other = find(i), find(key_owner[key])
-                if root != other:
-                    parent[root] = other
-            else:
-                key_owner[key] = i
-    groups: dict = defaultdict(list)
-    for i, rec in enumerate(records):
-        groups[find(i)].append(rec)
-    return [_merge_group(g) for g in groups.values()]
-
-
 def load_and_merge(src_zip: str) -> dict:
-    by_package: dict = defaultdict(list)
-    total = 0
-    with zipfile.ZipFile(src_zip) as zf:
-        for name in zf.namelist():
-            if not name.endswith(".json"):
-                continue
-            try:
-                record = json.loads(zf.read(name).decode("utf-8"))
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                continue
-            total += 1
-            for entry in record.get("affected") or []:
-                pkg = entry.get("package") or {}
-                if pkg.get("ecosystem") != "PyPI":
-                    continue
-                package = normalize_name(pkg.get("name", ""))
-                if package:
-                    by_package[package].append(_slim(record, _strip_versions(entry)))
-    print(f"源数据: {total} 条原始记录, {len(by_package)} 个 PyPI 包")
-    return {pkg: merge_package(recs) for pkg, recs in by_package.items()}
+    """复用扫描器内置的离线转换，外网端只负责下载和构建。"""
+    records, _ = load_osv_zip(src_zip)
+    print(f"源数据: {len(records)} 个 PyPI 包")
+    return records
 
 
 def fetch_latest(packages, cache_path: str | None, proxy: str | None, workers: int = 6) -> dict:

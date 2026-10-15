@@ -36,10 +36,9 @@ def match_record(record: dict, package: str, version_text: str) -> MatchOutcome:
         if normalize_name(pkg.get("name", "")) != package:
             continue
         versions = affected.get("versions")
-        if versions and not affected.get("ranges"):
+        if versions:
             if _in_explicit_versions(versions, ver, version_text):
                 outcome.matched = True
-            continue
         for rng in affected.get("ranges") or []:
             _match_range(rng, ver, outcome)
     return outcome

@@ -8,7 +8,7 @@
 - **数据来源**：[OSV.dev](https://osv.dev) PyPI 全量导出（聚合 GitHub Advisory / PYSEC / CVE）
 - 双语界面（`--lang zh|en`）
 
-[English](#english) | [PRD](docs/PRD.md) | [技术设计](docs/DESIGN.md) | **[新手操作手册](docs/操作手册.md)**
+[English](#english) | [PRD](docs/PRD.md) | [技术设计](docs/DESIGN.md) | **[新手操作手册](docs/操作手册.md)** | [漏洞库来源与准备说明](docs/漏洞库来源与准备说明.md)
 
 ## 架构一览
 

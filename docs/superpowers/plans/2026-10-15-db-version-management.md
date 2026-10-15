@@ -56,3 +56,12 @@ Files: modify `pythonscan/cli.py`, `pythonscan/gui.py`, `pythonscan/i18n.py`, `t
 - source/release与便携包为0.2.0.dev2，BUILD和SHA256对应验收二进制；便携ZIP及全部payload核验通过。旧dev1 release另存archive/releases/0.2.0.dev1，GitHub v0.1.0不变。
 - 追加只读历史核查：旧2026-09-20全量库含非法历史包名urlcon-，不能通过既有严格导入校验。它的原始ZIP/哈希保持不变，在手工归档metadata/inventory标注历史参考；有效全量兼容测试、当前与新下载归档均通过。此为旧数据格式边界，未放宽新导入校验。
 - 交付：dist/0.2.0.dev2/PythonScan-0.2.0.dev2-windows-x64.zip；详细命令日志在archive/builds/db-version-management-2026-10-15/validation。
+
+### 桌面解锁后补充验收（2026-10-15）
+
+- 使用 source/release 的 0.2.0.dev2 GUI EXE，加载 gui-visual-check/vulndb.zip 独立测试副本，未切换用户默认库。
+- 实际界面核对：19,758条记录、启用版本2026-10-15_4c7cc784a37d、完整64位内容SHA256及测试副本绝对路径均正确；最大化窗口中操作区及导出按钮可见。
+- 实际输入 requests==2.28.0 并点击扫描：检出4条漏洞，显示修复建议，JSON/HTML/PDF导出按钮启用。本次未执行报告导出。
+- 文件选择对话框已打开；自动化输入及重新定位后重试均返回 failed to activate captured window，按工具恢复规则停止可视操作。重复导入及错误导入的EXE对话框流程仍未完成可视验收，不将工具失败视为应用失败。
+- 随后重新运行 tests/test_gui_import.py：8项通过，覆盖身份/重复提示、导入扫描重启、失败恢复及关闭生命周期。独立测试副本SHA256仍为d00c3168383d558c58ea6cd76c80139565f782734b3c9bf059dd68c2dbda2e12，无新增备份；本次QA进程已清理。
+- 本次仅补充验收记录，未修改程序和交付包；BUILD.json保留构建时的检查状态。详细记录在archive/builds/db-version-management-2026-10-15/gui-visual-check/results.json。

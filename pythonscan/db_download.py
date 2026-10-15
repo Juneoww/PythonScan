@@ -21,6 +21,10 @@ from .db_import import prepare_import, validate_full
 SOURCE_URL = 'https://osv-vulnerabilities.storage.googleapis.com/PyPI/all.zip'
 
 
+class _CommitRecoveryError(DBError):
+    """新清单可能仍在使用，不能清理它引用的本次版本目录。"""
+
+
 def _now():
     return datetime.now(timezone.utc).isoformat(timespec='seconds')
 
@@ -111,7 +115,7 @@ def _commit(root, inventory, event):
             else:
                 _atomic_bytes(path, old)
         except Exception as recovery:
-            raise DBError(f'检查日志写入失败: {original}；恢复旧清单失败: {recovery}') from original
+            raise _CommitRecoveryError(f'检查日志写入失败: {original}；恢复旧清单失败: {recovery}') from original
         raise
 
 
@@ -128,6 +132,7 @@ def _finish(root, inventory, entry, status, reason, headers):
     checked = _now()
     updated.update(schema_version=1, generated_at=checked,
                    latest_archived_version=entry['version_id'], automatic_download_history=True,
+                   automatic_history_tracking=True,
                    last_successful_check={'checked_at': checked, **result},
                    source_cache={'url': SOURCE_URL, 'etag': headers.get('etag'),
                                  'version_id': entry['version_id'], 'checked_at': checked})
@@ -227,6 +232,8 @@ def _download_locked(root):
         try:
             return _finish(root, updated, entry, 'new', 'content_changed', headers)
         except Exception as original:
+            if isinstance(original, _CommitRecoveryError):
+                raise
             try:
                 os.replace(destination, staged)
             except Exception as recovery:

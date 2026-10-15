@@ -259,11 +259,11 @@ def db_info(path: str | Path | None = None) -> dict:
                     path=str(path.resolve()), latest_count=len(database.index.get('latest') or {}))
 
 
-def import_db(src_path: str, target: str | Path | None = None) -> dict:
+def import_db(src_path: str, target: str | Path | None = None, *, advance_snapshot=False) -> dict:
     """导入 OSV 原始 ZIP 或全量库，持久化并保留上一有效库。"""
     from .db_import import prepare_import, install_import
 
-    prepared = prepare_import(src_path, target)
+    prepared = prepare_import(src_path, target, advance_snapshot=advance_snapshot)
     try:
         return install_import(prepared)
     finally:
@@ -353,4 +353,4 @@ def update_db(delta_path: str, target: str | Path | None = None) -> dict:
     with tempfile.TemporaryDirectory(prefix='.pythonscan-delta-', dir=target.parent) as directory:
         candidate = Path(directory) / 'candidate.zip'
         _atomic_write_zip(candidate, items)
-        return import_db(str(candidate), target)
+        return import_db(str(candidate), target, advance_snapshot=True)

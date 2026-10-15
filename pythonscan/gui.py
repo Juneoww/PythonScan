@@ -69,7 +69,7 @@ class ScanGUI:
         self._closed = threading.Event()
         self._result_lock = threading.Lock()
         self._results = queue.Queue()
-        self.use_installed_var = tk.BooleanVar(value=False)
+        self.use_installed_var = tk.BooleanVar(master=root, value=False)
         root.title(t(lang, "gui_title", version=__version__))
         root.geometry("900x700")
         root.minsize(760, 560)
@@ -91,6 +91,9 @@ class ScanGUI:
         self.db_button.pack(side="left")
         self.db_label = ttk.Label(top, text=t(lang, "gui_db_loading"), foreground=MUTED)
         self.db_label.pack(side="left", padx=8)
+        self.db_identity_label = ttk.Label(self.root, text='', foreground=MUTED,
+                                           wraplength=860, justify='left')
+        self.db_identity_label.pack(fill='x', padx=10, pady=(0, 3))
 
         input_label = ttk.Label(self.root, text=t(lang, "gui_input_label"))
         input_label.pack(fill="x", padx=10, pady=(8, 2))
@@ -214,7 +217,11 @@ class ScanGUI:
             try:
                 db_import.install_import(prepared)
                 self.database = db.load(self.db_path)
+                self.database.identity
             except Exception as original:
+                if self.database is not None:
+                    self.database.close()
+                    self.database = None
                 try:
                     db_import.restore_import(prepared)
                     self.database = db.load(self.db_path)
@@ -228,12 +235,15 @@ class ScanGUI:
             self.output.configure(state="disabled")
             self._refresh_db_label()
             note = t(self.lang, "gui_db_imported")
+            if prepared.same_path or prepared.unchanged:
+                note = t(self.lang, 'gui_db_unchanged')
             if prepared.previous_invalid:
                 note += " " + t(self.lang, "gui_db_backup_skipped")
             self._set_status(note, SAFE)
         except Exception as exc:
             if self.database is None:
                 self.db_label.configure(text=t(self.lang, "gui_db_missing"), foreground=DANGER)
+                self.db_identity_label.configure(text='')
             else:
                 self._refresh_db_label()
             self._set_status(t(self.lang, "gui_db_import_failed", error=exc), DANGER)
@@ -248,6 +258,10 @@ class ScanGUI:
         self.db_label.configure(
             text=t(self.lang, "gui_db_loaded", snapshot=self.database.snapshot,
                    records=self.database.record_count), foreground=SAFE)
+        current = self.database.identity
+        self.db_identity_label.configure(text=t(self.lang, 'gui_db_identity',
+            version=current['version_id'], fingerprint=current['content_sha256'],
+            path=str(self.database.path.resolve())))
 
     def _on_close(self):
         with self._result_lock:
@@ -273,20 +287,22 @@ class ScanGUI:
         self.export_buttons = []
 
     def _load_db(self, path: str, quiet: bool):
+        candidate = None
         try:
             candidate = db.load(path)
+            candidate.identity
         except (DBError, OSError) as error:
+            if candidate is not None:
+                candidate.close()
             self.db_label.configure(text=t(self.lang, "gui_db_missing"), foreground=DANGER)
+            self.db_identity_label.configure(text='')
             if not quiet:
                 messagebox.showerror(t(self.lang, "gui_title"), str(error))
             return
         if self.database is not None:
             self.database.close()
         self.database = candidate
-        self.db_label.configure(
-            text=t(self.lang, "gui_db_loaded", snapshot=self.database.snapshot,
-                   records=self.database.record_count),
-            foreground=SAFE)
+        self._refresh_db_label()
 
     # ------------------------------------------------------------ 扫描
 

@@ -107,7 +107,7 @@ class PreparedImport:
         self.temporary.cleanup()
 
 
-def prepare_import(src_path, target=None) -> PreparedImport:
+def prepare_import(src_path, target=None, *, advance_snapshot=False) -> PreparedImport:
     """后台完成慢操作；此阶段不关闭或替换正在使用的库。"""
     src = Path(src_path).resolve()
     target = Path(target or db.default_db_path()).resolve()
@@ -144,9 +144,10 @@ def prepare_import(src_path, target=None) -> PreparedImport:
             prepared.rollback = directory / "previous.zip"
             shutil.copyfile(target, prepared.rollback)
             try:
-                validate_full(prepared.rollback)
+                previous_manifest = validate_full(prepared.rollback)
                 prepared.previous_valid = True
-                prepared.unchanged = identity(prepared.rollback)['content_sha256'] == actual_identity['content_sha256']
+                prepared.unchanged = (identity(prepared.rollback)['content_sha256'] == actual_identity['content_sha256']
+                                      and (not advance_snapshot or previous_manifest['snapshot'] == manifest['snapshot']))
             except db.DBError:
                 prepared.previous_invalid = True
         return prepared

@@ -208,6 +208,29 @@ class TestDownload(unittest.TestCase):
         self.assertEqual(self.requests, [])
         self.assertTrue((self.archive / '.download.lock').exists())
 
+    def test_failed_inventory_recovery_keeps_referenced_archive(self):
+        self.download()
+        self.etag, self.body = '"two"', raw_zip('2.0')
+        api = self.api()
+        replace = os.replace
+        inventory_writes = 0
+
+        def fail(source, target):
+            nonlocal inventory_writes
+            if Path(target).name == 'inventory.json':
+                inventory_writes += 1
+                if inventory_writes > 1:
+                    raise PermissionError('injected recovery failure')
+            if Path(target).name == 'checks.jsonl':
+                raise PermissionError('injected log failure')
+            return replace(source, target)
+
+        with patch.object(api.os, 'replace', side_effect=fail), self.assertRaises(DBError):
+            self.download()
+        for entry in self.inventory()['versions']:
+            self.assertTrue((self.archive / entry['directory'] / 'vulndb.zip').exists(),
+                            '恢复清单失败时必须保留仍被引用的有效版本目录')
+
     def test_unexpected_304_is_error(self):
         self.status, self.etag = 304, None
         with self.assertRaises(DBError):

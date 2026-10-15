@@ -94,6 +94,20 @@ class TestIdentity(unittest.TestCase):
         finally:
             prepared.close()
 
+    def test_empty_delta_advances_snapshot_for_next_delta(self):
+        db.import_db(str(self.full('base-chain.zip')), self.live)
+        old = db.db_info(self.live)
+        first = self.root / 'empty-delta.zip'
+        records = {'demo': [advisory(versions=['1.0'])]}
+        db.write_delta_db(str(self.live), records, str(first), snapshot='2026-10-16')
+        db.update_db(str(first), self.live)
+        self.assertEqual(db.db_info(self.live)['snapshot'], '2026-10-16')
+        self.assertEqual(db.db_info(self.live)['content_sha256'], old['content_sha256'])
+        second = self.root / 'next-delta.zip'
+        db.write_delta_db(str(self.live), {'demo': [advisory(versions=['2.0'])]}, str(second), snapshot='2026-10-17')
+        db.update_db(str(second), self.live)
+        self.assertEqual(db.db_info(self.live)['snapshot'], '2026-10-17')
+
     def test_fingerprint_ignores_zip_layout_and_manifest_fields(self):
         self.assertIsNotNone(importlib.util.find_spec('pythonscan.db_identity'), '需要共享的离线身份模块')
         from pythonscan.db_identity import json_fingerprint

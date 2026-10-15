@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pythonscan"
-version = "0.2.0.dev1"
+version = "0.2.0.dev2"
 description = "内网离线检查 pip 依赖包已知漏洞的命令行工具（数据源: 本地 OSV 漏洞库）"
 readme = "README.md"
 requires-python = ">=3.9"

@@ -12,7 +12,7 @@
 
 ## 开发版：直接导入 OSV 漏洞库
 
-当前开发版 `0.2.0.dev1` 已支持原始 OSV ZIP。每次更新只需：
+当前开发版 `0.2.0.dev2` 支持原始 OSV ZIP、下载去重归档及启用版本追踪。每次更新只需：
 
 1. 外网下载 [PyPI/all.zip](https://osv-vulnerabilities.storage.googleapis.com/PyPI/all.zip)，将文件传入内网，无需解压或转换。
 2. 打开开发版 GUI，点击 **导入/更新漏洞库**，选择该 ZIP。完成后立即使用新库，重启后自动加载。
@@ -24,7 +24,22 @@ python -m pythonscan db import C:\Transfer\all.zip
 python -m pythonscan db info
 ```
 
-仓库 `release/` 现已同步为 `0.2.0.dev1`，程序版本及 SHA256 见该目录的 `BUILD.json` 和 `SHA256SUMS.txt`。GitHub **v0.1.0 Release** 仍是历史版本，不包含直接导入原始 ZIP 的功能。下文的外网转换、增量流程仍可用于旧版及高级维护。
+仓库 `release/` 同步提供开发版，程序版本及 SHA256 见该目录的 `BUILD.json` 和 `SHA256SUMS.txt`。GitHub **v0.1.0 Release** 仍是历史版本，不包含直接导入原始 ZIP 的功能。下文的外网转换、增量流程仍可用于旧版及高级维护。
+
+### 外网下载与版本管理
+
+Windows 外网机双击 `release/download-db.cmd` 即可检查和归档，也可指定目录：
+
+```powershell
+release\pythonscan.exe db download --archive-dir ..\vulnerability-db
+release\pythonscan.exe db info
+```
+
+联网只发生在显式 `db download`。管理器按 ETag、ZIP SHA256、规范 JSON 指纹和扫描内容依次去重，304 或内容相同不重复建版。归档在 `versions/<快照日期>_<内容指纹前12位>/`，包含原始 ZIP、可直接导入的 `vulndb.zip` 和元数据；`inventory.json` 列出批次，`checks.jsonl` 记录每次检查。无更新返回 0，网络/校验/写入失败返回 2。默认目录是 `PYTHONSCAN_ARCHIVE` 或 `~/.pythonscan/downloads`；启动脚本在本工作区使用 `vulnerability-db`，在便携包使用包旁同名目录。
+
+**最新归档不等于实际启用。** 内网导入所需版本后，GUI 和 `db info` 显示实际路径、启用版本与完整内容指纹。身份取自实际数据；不维护可能脱节的外部 current.json。普通重复导入不改目标及备份；增量即使数据不变仍推进快照以维持基准链。历史手工归档保留原文件夹名，内容指纹仍可核对。
+
+快照是公告最近修改的 UTC 日期，下载时间另存；日期、大小和记录数不能单独证明更新。上游暂无变化时不伪造新版本。遇 `.download.lock` 遗留锁，确认无任务运行后移除锁再重试，不要同时写同一归档目录。
 
 ## 架构一览
 

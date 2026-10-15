@@ -81,7 +81,7 @@ def build_parser() -> argparse.ArgumentParser:
     scan_p.add_argument("--stale-days", type=int, default=90, help="库过期警告阈值天数（默认 90）")
     scan_p.add_argument("--no-color", action="store_true", help="禁用彩色输出")
 
-    db_p = sub.add_parser("db", help="漏洞库管理（import/update/info）")
+    db_p = sub.add_parser("db", help="漏洞库管理（download/import/update/info）")
     db_sub = db_p.add_subparsers(dest="db_cmd", required=True)
     for name, help_text in (("import", "导入 OSV 原始 ZIP 或全量库"), ("update", "应用增量包")):
         p = db_sub.add_parser(name, help=help_text)
@@ -91,6 +91,10 @@ def build_parser() -> argparse.ArgumentParser:
     info_p = db_sub.add_parser("info", help="查看当前漏洞库信息")
     info_p.add_argument("--db", help="库路径（默认 ~/.pythonscan/vulndb.zip）")
     info_p.add_argument("--lang", default=os.environ.get("PYTHONSCAN_LANG", "zh"), choices=["zh", "en"])
+
+    download_p = db_sub.add_parser('download', help='外网检查、去重并归档 OSV PyPI（不启用）')
+    download_p.add_argument('--archive-dir', help='归档目录（默认 PYTHONSCAN_ARCHIVE 或 ~/.pythonscan/downloads）')
+    download_p.add_argument('--lang', default=os.environ.get('PYTHONSCAN_LANG', 'zh'), choices=['zh', 'en'])
 
     gui_p = sub.add_parser("gui", help="打开桌面图形界面（Tkinter）")
     gui_p.add_argument("--db", help="漏洞库路径（默认 ~/.pythonscan/vulndb.zip 或 PYTHONSCAN_DB）")
@@ -243,9 +247,17 @@ def _render_terminal(result, lang: str, paint: Painter) -> None:
 
 def _cmd_db(args) -> int:
     lang = args.lang
+    if args.db_cmd == 'download':
+        from .db_download import download
+        result = download(args.archive_dir)
+        reason = t(lang, 'download_reason_' + result['reason'])
+        print(t(lang, 'download_result', status=t(lang, 'download_' + result['status']),
+                reason=reason, version=result['version_id'], path=result['directory'],
+                fingerprint=result['content_sha256']))
+        return EXIT_CLEAN
     if args.db_cmd == "import":
         manifest = db.import_db(args.file, args.target)
-        print(t(lang, "db_imported", path=args.target or db.default_db_path(),
+        print(t(lang, 'db_unchanged' if manifest.get('unchanged') else "db_imported", path=args.target or db.default_db_path(),
                 snapshot=manifest["snapshot"], records=manifest.get("record_count", 0),
                 packages=manifest.get("package_count", 0)))
         if manifest.get("backup_warning"):
@@ -261,4 +273,6 @@ def _cmd_db(args) -> int:
             snapshot=manifest.get("snapshot", "-"), schema=manifest.get("schema_version", "?"),
             records=manifest.get("record_count", 0), packages=manifest.get("package_count", 0),
             latests=manifest.get("latest_count", 0)))
+    print(t(lang, 'db_identity_info', version=manifest['version_id'],
+            fingerprint=manifest['content_sha256'], path=manifest['path']))
     return EXIT_CLEAN

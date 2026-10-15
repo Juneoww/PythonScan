@@ -3,6 +3,7 @@
 输入：OSV 测试 ZIP；输出：unittest 断言；不访问用户默认漏洞库。
 """
 from pathlib import Path
+import gc
 import json
 import tempfile
 import subprocess
@@ -34,12 +35,20 @@ class TestGUIImport(unittest.TestCase):
             self.skipTest(str(error))
         self.root.withdraw()
         self.app = gui.ScanGUI(self.root, str(self.live), lang="en")
-        self.addCleanup(lambda: self.app._on_close() if not self.app._closed.is_set() else None)
+        self.addCleanup(self.close_gui)
         error_patch = patch.object(gui.messagebox, "showerror")
         self.errors = error_patch.start()
         self.addCleanup(error_patch.stop)
         self.app.input_text.delete("1.0", "end")
         self.app.input_text.insert("1.0", "demo==1.0")
+
+    def close_gui(self):
+        """测试持有的解释器引用也必须在主线程释放，不能留给下个工作线程 GC。"""
+        if self.app is not None and not self.app._closed.is_set():
+            self.app._on_close()
+        self.app = None
+        self.root = None
+        gc.collect()
 
     def wait_idle(self):
         deadline = time.monotonic() + 10
@@ -120,6 +129,23 @@ class TestGUIImport(unittest.TestCase):
             self.app._on_pick_db()
         self.app._scanning = False
         self.assertFalse(picker.called, "扫描期间不能启动导入")
+
+    def test_identity_label_and_duplicate_status_match_active_library(self):
+        self.choose(self.raw)
+        info = db.db_info(self.live)
+        self.assertTrue(hasattr(self.app, 'db_identity_label'), 'GUI 应显示启用身份和实际路径')
+        text = str(self.app.db_identity_label['text'])
+        for value in (info['version_id'], info['content_sha256'], str(self.live.resolve())):
+            self.assertIn(value, text)
+        before = self.live.read_bytes()
+        self.choose(self.raw)
+        self.assertIn('unchanged', str(self.app.status_label['text']).lower())
+        self.assertEqual(self.live.read_bytes(), before)
+        self.assertFalse(self.live.with_name('managed.zip.bak').exists())
+        bad = self.work / 'bad.zip'
+        bad.write_bytes(b'broken')
+        self.choose(bad)
+        self.assertEqual(str(self.app.db_identity_label['text']), text)
 
     def test_close_discards_late_preparation(self):
         from pythonscan import db_import

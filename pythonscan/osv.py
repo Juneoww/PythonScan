@@ -41,6 +41,10 @@ def validate_record(record, *, raw=False):
         raise OSVError("公告必须为对象并包含非空 id")
     if raw:
         modified_time(record.get("modified"))
+        if record.get("withdrawn"):
+            modified_time(record["withdrawn"])
+            # 已撤回公告不参与建库，历史 affected 字段不应阻止有效数据导入。
+            return
     for key in ("aliases", "sources", "fixed_versions"):
         value = record.get(key, [])
         if not isinstance(value, list) or any(not isinstance(v, str) for v in value):
@@ -66,6 +70,8 @@ def validate_record(record, *, raw=False):
         if not isinstance(entry, dict) or not isinstance(entry.get("package", {}), dict):
             raise OSVError("affected 条目和 package 必须为对象")
         pkg = entry.get("package", {})
+        if "package" in entry and any(not isinstance(pkg.get(key), str) for key in ("ecosystem", "name")):
+            raise OSVError("package 必须包含字符串 ecosystem 和 name")
         if pkg.get("ecosystem") == "PyPI":
             name = pkg.get("name")
             if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?", name):

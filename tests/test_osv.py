@@ -97,6 +97,18 @@ class TestOSV(unittest.TestCase):
         with self.assertRaises(OSVError):
             self.load(self.raw(advisory(versions=["1.0"], withdrawn="2026-10-12T00:00:00Z")))
 
+    def test_withdrawn_historical_package_does_not_block_live_data(self):
+        withdrawn = advisory("MAL-historical", versions=["1.0"], withdrawn="2024-12-12T11:22:57Z")
+        withdrawn["affected"][0]["package"]["name"] = "urlcon-"
+        records, _ = self.load(self.raw(advisory(versions=["1.0"]), withdrawn))
+        self.assertEqual(set(records), {"demo"})
+
+    def test_malformed_ecosystem_is_not_silently_skipped(self):
+        broken = advisory("GHSA-broken", versions=["1.0"])
+        broken["affected"][0]["package"]["ecosystem"] = ["PyPI"]
+        with self.assertRaisesRegex(OSVError, "1.json"):
+            self.load(self.raw(advisory(versions=["1.0"]), broken))
+
 
 if __name__ == "__main__":
     unittest.main()

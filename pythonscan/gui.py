@@ -161,7 +161,8 @@ class ScanGUI:
         self._importing = True
         self._sync_controls()
         self._set_status(t(self.lang, "gui_db_importing"), WARN)
-        threading.Thread(target=self._import_worker, args=(path,), daemon=True).start()
+        # 关闭窗口后仍等待准备任务释放文件句柄并清理暂存目录。
+        threading.Thread(target=self._import_worker, args=(path,), daemon=False).start()
 
     def _import_worker(self, path):
         try:

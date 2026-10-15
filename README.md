@@ -10,6 +10,22 @@
 
 [English](#english) | [PRD](docs/PRD.md) | [技术设计](docs/DESIGN.md) | **[新手操作手册](docs/操作手册.md)** | [漏洞库来源与准备说明](docs/漏洞库来源与准备说明.md)
 
+## 开发版：直接导入 OSV 漏洞库
+
+当前开发版 `0.2.0.dev1` 已支持原始 OSV ZIP。每次更新只需：
+
+1. 外网下载 [PyPI/all.zip](https://osv-vulnerabilities.storage.googleapis.com/PyPI/all.zip)，将文件传入内网，无需解压或转换。
+2. 打开开发版 GUI，点击 **导入/更新漏洞库**，选择该 ZIP。完成后立即使用新库，重启后自动加载。
+
+导入完全离线，也兼容已有 PythonScan 全量库。默认安装到 `%USERPROFILE%\.pythonscan\vulndb.zip`；启动参数 `--db` 优先，其次是 `PYTHONSCAN_DB`。替换前把上一份有效库保存为目标文件旁的 `.bak`，输入 ZIP 保持不变。恢复时关闭程序，将 `.bak` 复制回目标路径后重启。增量包继续使用 `db update`。
+
+```powershell
+python -m pythonscan db import C:\Transfer\all.zip
+python -m pythonscan db info
+```
+
+GitHub **v0.1.0 Release** 和仓库 `release/` 中的旧 EXE 不包含此功能；请使用新构建的开发版 EXE 或当前源码。下文的外网转换、增量流程仍可用于旧版及高级维护。
+
 ## 架构一览
 
 ```

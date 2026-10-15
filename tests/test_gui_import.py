@@ -5,6 +5,8 @@
 from pathlib import Path
 import json
 import tempfile
+import subprocess
+import sys
 import threading
 import time
 import tkinter as tk
@@ -145,6 +147,35 @@ class TestGUIImport(unittest.TestCase):
             release.set()
             self.assertTrue(cleaned.wait(5), "关闭后应清理迟到的准备结果")
         self.assertFalse(self.live.exists())
+
+    def test_process_exit_waits_for_import_cleanup(self):
+        script = '''"""功能：在真实进程退出时验证导入文件句柄及临时目录清理。"""
+import sys, threading, time, tkinter as tk
+from pythonscan import gui, db_import
+root=tk.Tk(); root.withdraw()
+app=gui.ScanGUI(root, sys.argv[2])
+started=threading.Event()
+original=db_import.prepare_import
+def prepare(*args):
+    result=original(*args)
+    with open(result.candidate, 'rb'):
+        started.set()
+        app._closed.wait(5)
+        time.sleep(0.15)
+    return result
+db_import.prepare_import=prepare
+gui.filedialog.askopenfilename=lambda **kw: sys.argv[1]
+app._on_pick_db()
+def poll():
+    if started.is_set(): app._on_close()
+    else: root.after(10,poll)
+root.after(10,poll)
+root.mainloop()
+'''
+        result = subprocess.run([sys.executable, "-c", script, str(self.raw),
+                                 str(self.work / "child.zip")], capture_output=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(list(self.work.glob(".pythonscan-import-*")), [])
 
 
 if __name__ == "__main__":

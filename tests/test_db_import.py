@@ -166,6 +166,14 @@ class TestImport(unittest.TestCase):
             self.assertEqual(self.live.read_bytes(), before)
             self.assertEqual(source.read_bytes(), original)
 
+    def test_indexed_record_must_affect_its_package(self):
+        wrong = advisory(versions=["1.0"])
+        wrong["affected"][0]["package"]["name"] = "other"
+        source = self.work / "wrong-package.zip"
+        db.write_full_db({"demo": [wrong]}, str(source))
+        with self.assertRaises(db.DBError):
+            db.import_db(str(source), self.live)
+
 
 if __name__ == "__main__":
     unittest.main()

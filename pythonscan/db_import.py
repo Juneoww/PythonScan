@@ -18,6 +18,7 @@ import zipfile
 
 from . import db
 from .osv import OSVError, load_osv_zip, validate_record
+from .versioning import normalize_name
 
 
 def validate_full(path) -> dict:
@@ -64,6 +65,10 @@ def validate_full(path) -> dict:
                     raise db.DBError(f"包记录数不符: {package}")
                 for record in records:
                     validate_record(record)
+                    if not any(entry.get("package", {}).get("ecosystem") == "PyPI"
+                               and normalize_name(entry["package"]["name"]) == package
+                               for entry in record.get("affected", [])):
+                        raise db.DBError(f"公告 {record['id']} 与索引包 {package} 不对应")
                 total += len(records)
             data_names = {n for n in names if n.startswith("data/") and not n.endswith("/")}
             if data_names != required:

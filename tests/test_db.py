@@ -10,14 +10,14 @@ from pythonscan import db
 from pythonscan.db import DBError, VulnDB, import_db, update_db, write_delta_db, write_full_db
 
 
-def _record(rid, fixed="2.31.0", introduced="2.0"):
+def _record(rid, fixed="2.31.0", introduced="2.0", name="requests"):
     return {
         "id": rid,
         "aliases": [],
         "summary": f"summary {rid}",
         "database_specific": {"severity": "HIGH"},
         "severity": [],
-        "affected": [{"package": {"ecosystem": "PyPI", "name": "requests"},
+        "affected": [{"package": {"ecosystem": "PyPI", "name": name},
                       "ranges": [{"type": "ECOSYSTEM",
                                   "events": [{"introduced": introduced}, {"fixed": fixed}]}]}],
         "fixed_versions": [fixed],
@@ -34,7 +34,7 @@ class TestFullDb(unittest.TestCase):
         self.db_path = self.dir / "vulndb.zip"
         self.manifest = write_full_db(
             {"requests": [_record("CVE-1"), _record("CVE-2", fixed="2.20.0")],
-             "flask": [_record("GHSA-f1", fixed="1.0")]},
+             "flask": [_record("GHSA-f1", fixed="1.0", name="flask")]},
             out_path=str(self.db_path), snapshot="2026-09-13",
             latest={"requests": "2.32.5"})
 
@@ -85,8 +85,8 @@ class TestDelta(unittest.TestCase):
         self.dir = Path(self.tmp.name)
         self.v1 = self.dir / "v1.zip"
         write_full_db({"requests": [_record("CVE-1")],
-                       "flask": [_record("GHSA-f1")],
-                       "oldpkg": [_record("CVE-old")]},
+                       "flask": [_record("GHSA-f1", name="flask")],
+                       "oldpkg": [_record("CVE-old", name="oldpkg")]},
                       out_path=str(self.v1), snapshot="20260901")
 
     def tearDown(self):
@@ -101,7 +101,7 @@ class TestDelta(unittest.TestCase):
 
     def test_add_update_delete(self):
         manifest = self._apply({"requests": [_record("CVE-1"), _record("CVE-2")],
-                                "flask": [_record("GHSA-f1")]})
+                                "flask": [_record("GHSA-f1", name="flask")]})
         self.assertEqual(manifest["snapshot"], "20260913")
         self.assertEqual(manifest["base"], "20260901")
         with VulnDB(self.dir / "live.zip") as vdb:
@@ -114,8 +114,8 @@ class TestDelta(unittest.TestCase):
     def test_unchanged_package_not_in_delta(self):
         delta = self.dir / "delta.zip"
         manifest = write_delta_db(self.v1, {"requests": [_record("CVE-1")],
-                                            "flask": [_record("GHSA-f1")],
-                                            "oldpkg": [_record("CVE-old")]},
+                                            "flask": [_record("GHSA-f1", name="flask")],
+                                            "oldpkg": [_record("CVE-old", name="oldpkg")]},
                                   out_path=str(delta), snapshot="20260913")
         self.assertEqual(manifest["stats"]["upserts"], 0)
         with zipfile.ZipFile(delta) as zf:

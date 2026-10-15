@@ -44,4 +44,15 @@ Files: modify `pythonscan/cli.py`, `pythonscan/gui.py`, `pythonscan/i18n.py`, `t
 - [x] 全套测试、diff check；独立 spec compliance 先过，再质量 review，修复并复审。
 - [x] 构建 CLI/GUI 到 archive/builds/db-version-management-2026-10-15/dist。EXE 在不含 Python 的 PATH 下验证新命令、两次外网检查、原始/全量导入、重复导入备份稳定、重启 info 和扫描。隐藏 Tk 测试覆盖 GUI；不安装用户默认库。
 - [x] 先归档既有 dev1，更新 source/release、dist/0.2.0.dev2 及包含当前有效快照的便携包，生成 BUILD/校验清单。文档明确两个日期、两种指纹和最新下载≠实际启用。GitHub v0.1.0 不变。
-- [ ] 验证后快进合并本地 develop，在合并后运行完整测试，记录验收和迁移位置，清理本次工作树。
+- [x] 验证后快进合并本地 develop，在合并后运行完整测试，记录验收和迁移位置，清理本次工作树。
+
+## 验收记录（2026-10-15）
+
+- 基线70项；最终99项完整测试通过，合并本地develop后再次99项通过。独立spec compliance与代码质量评审均Approved。
+- 两个Windows x64 EXE构建通过；CLI在Windows-only PATH下14项独立进程检查全部通过，覆盖真实下载重复检查、原始/全量导入、重复备份保持、重启身份、错误退出码及扫描。
+- 下载脚本在中文/空格路径通过，并验证 source/release 无参数入口确实定位工作区 vulnerability-db，没有在release旁误建另一库目录。
+- 官方下载获得2026-10-15_4c7cc784a37d：19,758记录 / 13,426包。立即重复检查304，版本数量不增加；未安装或切换用户默认库。
+- GUI真实Tk/mainloop测试包含身份/路径显示、重复导入、失败恢复和关闭后生命周期。GUI EXE启动窗口标题可见于窗口清单；桌面锁屏，停止可视自动化，未声称完成可视布局复查。
+- source/release与便携包为0.2.0.dev2，BUILD和SHA256对应验收二进制；便携ZIP及全部payload核验通过。旧dev1 release另存archive/releases/0.2.0.dev1，GitHub v0.1.0不变。
+- 追加只读历史核查：旧2026-09-20全量库含非法历史包名urlcon-，不能通过既有严格导入校验。它的原始ZIP/哈希保持不变，在手工归档metadata/inventory标注历史参考；有效全量兼容测试、当前与新下载归档均通过。此为旧数据格式边界，未放宽新导入校验。
+- 交付：dist/0.2.0.dev2/PythonScan-0.2.0.dev2-windows-x64.zip；详细命令日志在archive/builds/db-version-management-2026-10-15/validation。

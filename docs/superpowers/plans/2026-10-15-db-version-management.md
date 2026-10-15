@@ -17,7 +17,7 @@ Files: create `pythonscan/db_identity.py`, `tests/test_db_identity.py`; modify `
 - [ ] `identity(path, manifest=None)` 总是按真实内容计算 `content_sha256` 和 `<安全快照>_<hash[:12]>`，不信任输入声明。安全快照仅保留 ASCII 字母数字和连字符，最多32字节，空值为 undated。
 - [ ] 准备阶段完整验证之后计算身份，重写候选 manifest 加入身份、导入时间；raw 另存 source_json_sha256。重写不改变数据哈希，使用唯一暂存/原子替换。
 - [ ] PreparedImport 增加 unchanged 标志。旧目标有效且内容相同时不替换、不更新 .bak，结果包含 unchanged=True；新旧不同仍沿用回滚。覆盖同路径、旧无身份库、伪造身份以及重载失败。
-- [ ] VulnDB 增加缓存的 identity 属性；新库从合法 manifest 身份读取，旧库按实际内容派生。db_info 用 load 返回 identity、实际 path；旧字段兼容。增量在目标同目录构建候选，然后走同一 import 服务生成身份及备份，不能留旧身份。
+- [ ] VulnDB 增加缓存的 identity 属性；所有库均按实际 index/data 派生，不能仅因 manifest 字段格式合法就信任它。增加直接加载伪造身份库的测试。db_info 用 load 返回 identity、实际 path；旧字段兼容。增量在目标同目录构建候选，然后走同一 import 服务生成身份及备份，不能留旧身份。
 - [ ] 跑身份、导入、增量与完整测试，自审并提交。
 
 ## Task 2 外网下载和版本归档
@@ -30,7 +30,7 @@ Files: create `pythonscan/db_download.py`, `tests/test_db_download.py`.
 - [ ] urllib GET timeout=30，分块写入 raw.zip，核对可用 Content-Length；HTTP304 仅在发送有效条件请求且可用版本存在时接受。其他错误抛 DBError，失败日志不改 inventory 的成功状态。
 - [ ] 依次判定 raw SHA、raw JSON hash、转换 full 的 content_sha256；匹配前验证归档实际文件完整性。不存在可用旧文件时不能304短路；损坏已知版本报错或安全恢复，不能覆盖原有不可变目录。重复只刷新成功来源缓存/检查时间，记录对应已有版本。
 - [ ] 用 prepare_import 转换到本次暂存候选，保留原始输入；拷贝候选为 staged/vulndb.zip、写 metadata.json（使用本次响应 ETag/Last-Modified/generation/downloaded_at 等）。新目录版本ID来自候选 identity，旧手工ID可复用。路径碰撞拒绝覆盖。
-- [ ] os.replace 完成新目录和 inventory 提交。清单提交失败移回本次目录并清理，错误明确；checks.jsonl 写 new/unchanged/error，锁/暂存都 finally 清理。日志写失败不能冒充下载成功。
+- [ ] os.replace 完成新目录和 inventory 提交。日志采用原内容加新行写唯一暂存后原子替换，避免部分追加；清单先提交，日志失败则恢复旧清单（原先不存在则撤销本次文件），并将本次新版本目录移回暂存。清单或补偿失败明确报告；失败日志不改成功缓存。测试日志提交失败后目录、inventory、成功缓存均恢复。checks.jsonl 写 new/unchanged/error，锁/暂存都 finally 清理。
 - [ ] 跑新增测试和完整测试，自审提交。
 
 ## Task 3 CLI、GUI、文档与打包

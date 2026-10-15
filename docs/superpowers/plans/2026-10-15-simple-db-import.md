@@ -46,5 +46,15 @@ Files: modify `README.md`, `docs/操作手册.md`, `docs/漏洞库来源与准�
 - [x] 文档突出两步流程，说明旧库备份路径、恢复、自定义目标和原始库快照含义。保留 v0.1.0 已知行为历史说明并明确开发版的新行为，不能保留“原始 ZIP 不能导入”的无版本限定结论。
 - [x] 运行完整测试和 `git diff --check`；按 spec 先做合规评审，再做代码质量评审，修复实际问题。
 - [x] `python -m PyInstaller --noconfirm --clean --distpath <workspace-root>/import-build/dist --workpath <workspace-root>/import-build/work-cli pythonscan.spec`；GUI 使用独立 work-gui 和 pythonscan-gui.spec。
-- [ ] 发布 EXE 在移除 Python PATH 的临时目录中测试原始 ZIP 导入、第二批替换与备份、重启读取、扫描、错误退出码；验证 GUI EXE 启动，隐藏源 GUI 验证完整导入重扫流程。可读取最新 OSV 完整导出做真实数据导入验证；不修改用户默认库。
-- [ ] 打包本地 Windows ZIP 和使用说明，SHA256 校验；不改动 GitHub v0.1.0 Release。验证通过后将工作区提交快进回 develop，保留既有文档，报告本地 EXE 路径。
+- [x] 发布 EXE 在移除 Python PATH 的临时目录中测试原始 ZIP 导入、第二批替换与备份、重启读取、扫描、错误退出码；验证 GUI EXE 启动，隐藏源 GUI 验证完整导入重扫流程。可读取最新 OSV 完整导出做真实数据导入验证；不修改用户默认库。
+- [x] 打包本地 Windows ZIP 和使用说明，SHA256 校验；不改动 GitHub v0.1.0 Release。验证通过后将工作区提交快进回 develop，保留既有文档，报告本地 EXE 路径。
+
+## 验收记录（2026-10-15）
+
+- 已快进合并至本地 `develop`，合并后完整 unittest：70 项通过；`git diff --check` 通过。
+- 设计合规复审和独立代码质量复审均 Approved。评审发现的索引对应、关闭清理、字段类型和备份输入保护均补失败复现后修复。
+- 官方 OSV PyPI 原始 ZIP：35,988,390 字节，离线导入得到 19,757 条记录 / 13,425 个包，snapshot=2026-10-15。已撤回历史公告不阻断有效导入。
+- 最终 CLI EXE 在仅含 Windows 系统目录的 PATH 下完成 15 项独立进程检查：原始导入、替换、备份、复制备份恢复、同路径校验、错误退出码、旧全量兼容、真实原始全量和 requests 扫描、重启读取。日志保存在工作区 `import-build/final-validation/results.json`。
+- 真实 Tk/mainloop 测试覆盖导入、重扫、失败恢复、重启持久化和关闭进程清理；GUI EXE 实际完成第一批原始 ZIP 导入并显示保存成功。随后桌面助手两次返回 `failed to activate captured window`，因此没有声称完成 EXE 的全部交互复测。
+- PyInstaller 6.16.0 / Python 3.13.5 / Windows x64 构建两个 EXE。便携包包含 EXE、真实快照、操作说明及文件 SHA256 清单，ZIP 完整性及全部包内文件哈希已验证。
+- 本地交付：`import-build/PythonScan-0.2.0.dev1-windows-x64.zip`。GitHub v0.1.0 Release 及仓库旧 `release/` 保持原版本；本次未发布新 Release。

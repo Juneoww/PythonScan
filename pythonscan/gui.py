@@ -6,12 +6,13 @@
 
 from __future__ import annotations
 
+import queue
 import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from . import __version__, db, engine, report
+from . import __version__, db, db_import, engine, report
 from .db import DBError
 from .i18n import localize_note, t
 from .inputspec import Dependency, InvalidDependency, parse_line
@@ -63,12 +64,19 @@ class ScanGUI:
         self.database = None
         self.result = None
         self._scanning = False
+        self._importing = False
+        self.db_path = Path(db_path or db.default_db_path()).resolve()
+        self._closed = threading.Event()
+        self._result_lock = threading.Lock()
+        self._results = queue.Queue()
         self.use_installed_var = tk.BooleanVar(value=False)
         root.title(t(lang, "gui_title", version=__version__))
         root.geometry("900x700")
         root.minsize(760, 560)
         self._build_ui()
-        self._load_db(db_path or str(db.default_db_path()), quiet=True)
+        self._load_db(str(self.db_path), quiet=True)
+        root.protocol("WM_DELETE_WINDOW", self._on_close)
+        self._poll_id = root.after(40, self._poll_results)
 
     # ------------------------------------------------------------ UI 构建
 
@@ -143,16 +151,121 @@ class ScanGUI:
     # ------------------------------------------------------------ 漏洞库
 
     def _on_pick_db(self):
+        if self._scanning or self._importing:
+            return
         path = filedialog.askopenfilename(
             title=t(self.lang, "gui_pick_db"),
-            filetypes=[("PythonScan 漏洞库", "*.zip"), ("全部文件", "*.*")])
-        if path:
-            self._load_db(path, quiet=False)
+            filetypes=[("OSV / PythonScan ZIP", "*.zip"), ("全部文件", "*.*")])
+        if not path:
+            return
+        self._importing = True
+        self._sync_controls()
+        self._set_status(t(self.lang, "gui_db_importing"), WARN)
+        threading.Thread(target=self._import_worker, args=(path,), daemon=True).start()
+
+    def _import_worker(self, path):
+        try:
+            prepared = db_import.prepare_import(path, self.db_path)
+            self._deliver("import", (prepared, None))
+        except Exception as exc:
+            self._deliver("import", (None, exc))
+
+    def _deliver(self, kind, payload):
+        # 此锁使关闭事件和队列交付成为一个不可分割的操作，不在工作线程调用 Tk。
+        with self._result_lock:
+            if self._closed.is_set():
+                if kind == "import" and payload[0] is not None:
+                    payload[0].close()
+            else:
+                self._results.put((kind, payload))
+
+    def _poll_results(self):
+        if self._closed.is_set():
+            return
+        while True:
+            try:
+                kind, payload = self._results.get_nowait()
+            except queue.Empty:
+                break
+            if kind == "import":
+                self._import_done(*payload)
+            else:
+                self._scan_done(*payload)
+        self._poll_id = self.root.after(40, self._poll_results)
+
+    def _sync_controls(self):
+        state = "disabled" if self._scanning or self._importing else "normal"
+        self.db_button.configure(state=state)
+        self.scan_button.configure(state=state)
+        self._set_export_enabled(state == "normal" and self.result is not None)
+
+    def _import_done(self, prepared, error):
+        try:
+            if error is not None:
+                raise error
+            if self.database is not None:
+                self.database.close()
+                self.database = None
+            try:
+                db_import.install_import(prepared)
+                self.database = db.load(self.db_path)
+            except Exception as original:
+                try:
+                    db_import.restore_import(prepared)
+                    self.database = db.load(self.db_path)
+                except Exception as recovery:
+                    self.database = None
+                    raise DBError(f"{original}; recovery failed: {recovery}") from original
+                raise
+            self.result = None
+            self.output.configure(state="normal")
+            self.output.delete("1.0", "end")
+            self.output.configure(state="disabled")
+            self._refresh_db_label()
+            note = t(self.lang, "gui_db_imported")
+            if prepared.previous_invalid:
+                note += " " + t(self.lang, "gui_db_backup_skipped")
+            self._set_status(note, SAFE)
+        except Exception as exc:
+            if self.database is None:
+                self.db_label.configure(text=t(self.lang, "gui_db_missing"), foreground=DANGER)
+            else:
+                self._refresh_db_label()
+            self._set_status(t(self.lang, "gui_db_import_failed", error=exc), DANGER)
+            messagebox.showerror(t(self.lang, "gui_title"), str(exc))
+        finally:
+            if prepared is not None:
+                prepared.close()
+            self._importing = False
+            self._sync_controls()
+
+    def _refresh_db_label(self):
+        self.db_label.configure(
+            text=t(self.lang, "gui_db_loaded", snapshot=self.database.snapshot,
+                   records=self.database.record_count), foreground=SAFE)
+
+    def _on_close(self):
+        with self._result_lock:
+            if self._closed.is_set():
+                return
+            self._closed.set()
+            while True:
+                try:
+                    kind, payload = self._results.get_nowait()
+                except queue.Empty:
+                    break
+                if kind == "import" and payload[0] is not None:
+                    payload[0].close()
+        if self.database is not None:
+            self.database.close()
+            self.database = None
+        self.root.after_cancel(self._poll_id)
+        self.root.destroy()
 
     def _load_db(self, path: str, quiet: bool):
         try:
             candidate = db.load(path)
-        except DBError as error:
+        except (DBError, OSError) as error:
             self.db_label.configure(text=t(self.lang, "gui_db_missing"), foreground=DANGER)
             if not quiet:
                 messagebox.showerror(t(self.lang, "gui_title"), str(error))
@@ -182,6 +295,8 @@ class ScanGUI:
         self.input_text.insert("1.0", content)
 
     def _on_clear(self):
+        if self._scanning or self._importing:
+            return
         self.input_text.delete("1.0", "end")
         self.output.configure(state="normal")
         self.output.delete("1.0", "end")
@@ -191,7 +306,7 @@ class ScanGUI:
         self._set_export_enabled(False)
 
     def _on_scan(self):
-        if self._scanning:
+        if self._scanning or self._importing:
             return
         if self.database is None:
             messagebox.showwarning(t(self.lang, "gui_title"), t(self.lang, "gui_db_missing"))
@@ -201,23 +316,23 @@ class ScanGUI:
             messagebox.showinfo(t(self.lang, "gui_title"), t(self.lang, "no_deps"))
             return
         self._scanning = True
-        self.scan_button.configure(state="disabled")
+        self._sync_controls()
         self._set_status(t(self.lang, "gui_scanning"), WARN)
-        thread = threading.Thread(target=self._scan_worker, args=(deps, warns), daemon=True)
+        thread = threading.Thread(target=self._scan_worker,
+                                  args=(deps, warns, self.database, self.use_installed_var.get()), daemon=True)
         thread.start()
 
-    def _scan_worker(self, deps, warns):
+    def _scan_worker(self, deps, warns, database, use_installed):
         try:
-            result = engine.scan(deps, self.database, source="GUI",
-                                 use_installed=self.use_installed_var.get())
+            result = engine.scan(deps, database, source="GUI", use_installed=use_installed)
             error = None
         except Exception as exc:  # 后台线程兜底，避免界面无响应假死
             result, error = None, exc
-        self.root.after(0, self._scan_done, result, warns, error)
+        self._deliver("scan", (result, warns, error))
 
     def _scan_done(self, result, warns, error):
         self._scanning = False
-        self.scan_button.configure(state="normal")
+        self._sync_controls()
         if error is not None:
             self._set_status(t(self.lang, "gui_scan_failed", error=error), DANGER)
             return

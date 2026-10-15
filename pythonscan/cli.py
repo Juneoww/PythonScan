@@ -83,7 +83,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     db_p = sub.add_parser("db", help="漏洞库管理（import/update/info）")
     db_sub = db_p.add_subparsers(dest="db_cmd", required=True)
-    for name, help_text in (("import", "导入全量库"), ("update", "应用增量包")):
+    for name, help_text in (("import", "导入 OSV 原始 ZIP 或全量库"), ("update", "应用增量包")):
         p = db_sub.add_parser(name, help=help_text)
         p.add_argument("file", help="库文件路径")
         p.add_argument("--db", dest="target", help="目标库路径（默认 ~/.pythonscan/vulndb.zip）")
@@ -248,6 +248,8 @@ def _cmd_db(args) -> int:
         print(t(lang, "db_imported", path=args.target or db.default_db_path(),
                 snapshot=manifest["snapshot"], records=manifest.get("record_count", 0),
                 packages=manifest.get("package_count", 0)))
+        if manifest.get("backup_warning"):
+            print(manifest["backup_warning"], file=sys.stderr)
         return EXIT_CLEAN
     if args.db_cmd == "update":
         manifest = db.update_db(args.file, args.target)

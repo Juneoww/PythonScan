@@ -63,7 +63,8 @@ def _verify_files(zf: zipfile.ZipFile, manifest: dict, what: str) -> None:
 # ---------------------------------------------------------------- 构建端（同步器/测试共用）
 
 def write_full_db(records_by_package: dict, out_path: str, snapshot: str | None = None,
-                  latest: dict | None = None, generator: str = "pythonscan") -> dict:
+                  latest: dict | None = None, generator: str = "pythonscan",
+                  metadata: dict | None = None) -> dict:
     """构建全量库 zip，返回 manifest。records: {规范包名: [记录, ...]}"""
     snapshot = snapshot or date.today().isoformat()
     entries: list[tuple[str, bytes]] = []
@@ -85,6 +86,7 @@ def write_full_db(records_by_package: dict, out_path: str, snapshot: str | None 
         "record_count": total,
         "package_count": len(packages),
     }
+    manifest.update(metadata or {})
     manifest = _write_zip(out_path, entries, index, manifest, extra_files={})
     return manifest
 
@@ -186,19 +188,25 @@ class VulnDB:
             self._zf = zipfile.ZipFile(self.path)
         except zipfile.BadZipFile:
             raise DBError(f"漏洞库文件损坏（非有效 zip）: {self.path}") from None
-        self.manifest = _read_manifest(self._zf)
-        if self.manifest.get("schema_version") != SCHEMA_VERSION:
-            raise DBError(
-                f"漏洞库 schema 版本不兼容: 库 v{self.manifest.get('schema_version')}，"
-                f"程序 v{SCHEMA_VERSION}，请升级 PythonScan"
-            )
-        if self.manifest.get("kind") != "full":
-            raise DBError("当前库不是全量库，请重新 db import")
-        expected = (self.manifest.get("files") or {}).get(INDEX_NAME)
-        index_blob = self._zf.read(INDEX_NAME)
-        if expected and _sha256(index_blob) != expected:
-            raise DBError("index.json 校验失败，漏洞库可能已损坏")
-        self.index = json.loads(index_blob.decode("utf-8"))
+        try:
+            self.manifest = _read_manifest(self._zf)
+            if self.manifest.get("schema_version") != SCHEMA_VERSION:
+                raise DBError(
+                    f"漏洞库 schema 版本不兼容: 库 v{self.manifest.get('schema_version')}，"
+                    f"程序 v{SCHEMA_VERSION}，请升级 PythonScan"
+                )
+            if self.manifest.get("kind") != "full":
+                raise DBError("当前库不是全量库，请重新 db import")
+            expected = (self.manifest.get("files") or {}).get(INDEX_NAME)
+            index_blob = self._zf.read(INDEX_NAME)
+            if expected and _sha256(index_blob) != expected:
+                raise DBError("index.json 校验失败，漏洞库可能已损坏")
+            self.index = json.loads(index_blob.decode("utf-8"))
+        except Exception as exc:
+            self._zf.close()
+            if isinstance(exc, (ValueError, KeyError, UnicodeError, zipfile.BadZipFile, AttributeError, TypeError)):
+                raise DBError(f"漏洞库格式损坏: {exc}") from exc
+            raise
 
     @property
     def snapshot(self) -> str:
@@ -243,27 +251,14 @@ def db_info(path: str | Path | None = None) -> dict:
 
 
 def import_db(src_path: str, target: str | Path | None = None) -> dict:
-    """导入全量库：先完整校验，再原子落盘。"""
-    target = Path(target or default_db_path())
-    src = Path(src_path)
-    if not src.exists():
-        raise DBError(f"全量库文件不存在: {src}")
+    """导入 OSV 原始 ZIP 或全量库，持久化并保留上一有效库。"""
+    from .db_import import prepare_import, install_import
+
+    prepared = prepare_import(src_path, target)
     try:
-        with zipfile.ZipFile(src) as zf:
-            manifest = _read_manifest(zf)
-            if manifest.get("kind") != "full":
-                raise DBError("导入文件不是全量库（kind != full），增量包请用 db update")
-            if manifest.get("schema_version") != SCHEMA_VERSION:
-                raise DBError(f"schema 版本不兼容: v{manifest.get('schema_version')}")
-            _verify_files(zf, manifest, "全量库")
-            data = src.read_bytes()
-    except zipfile.BadZipFile:
-        raise DBError(f"全量库文件损坏（非有效 zip）: {src}") from None
-    target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_suffix(target.suffix + ".tmp")
-    tmp.write_bytes(data)
-    os.replace(tmp, target)
-    return manifest
+        return install_import(prepared)
+    finally:
+        prepared.close()
 
 
 def update_db(delta_path: str, target: str | Path | None = None) -> dict:

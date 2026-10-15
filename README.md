@@ -24,7 +24,7 @@ python -m pythonscan db import C:\Transfer\all.zip
 python -m pythonscan db info
 ```
 
-GitHub **v0.1.0 Release** 和仓库 `release/` 中的旧 EXE 不包含此功能；请使用新构建的开发版 EXE 或当前源码。下文的外网转换、增量流程仍可用于旧版及高级维护。
+仓库 `release/` 现已同步为 `0.2.0.dev1`，程序版本及 SHA256 见该目录的 `BUILD.json` 和 `SHA256SUMS.txt`。GitHub **v0.1.0 Release** 仍是历史版本，不包含直接导入原始 ZIP 的功能。下文的外网转换、增量流程仍可用于旧版及高级维护。
 
 ## 架构一览
 
@@ -38,12 +38,12 @@ GitHub **v0.1.0 Release** 和仓库 `release/` 中的旧 EXE 不包含此功能�
 
 ## 快速开始（内网端）
 
-**方式零：免安装 exe**（`release/` 目录已提供 Windows 可执行文件与预置漏洞库，无需 Python 环境）：
+**方式零：免安装 exe**（`release/` 目录提供 Windows 可执行文件，无需 Python 环境；漏洞库独立管理）：
 
 ```bat
 release\pythonscan-gui.exe                       :: 桌面图形界面（双击即可）
 release\pythonscan.exe scan                      :: 命令行交互式扫描
-release\pythonscan.exe db import release\pypi-advisories-20260920.zip   :: 首次先导入预置漏洞库
+release\pythonscan.exe db import C:\Transfer\all.zip   :: 首次导入 OSV 原始 ZIP 或已有全量库
 ```
 
 **方式一：桌面图形界面**（多行输入框 + 文件选择 + 一键导出报告）：
@@ -67,10 +67,10 @@ pip install -e .
 pythonscan scan
 ```
 
-首次使用先导入漏洞库（在外网机生成，见下文）：
+首次使用先导入漏洞库（可直接使用外网下载的 OSV 原始 ZIP）：
 
 ```bash
-pythonscan db import pypi-advisories-20260913.zip
+pythonscan db import all.zip
 ```
 
 ## 用法

@@ -1,0 +1,15 @@
+{
+  "application_version": "0.2.0.dev1",
+  "source_commit": "dbd86bc",
+  "platform": "windows-x64",
+  "python": "3.13.5",
+  "pyinstaller": "6.16.0",
+  "synchronized_at": "2026-10-15T07:06:45+00:00",
+  "files": {
+    "pythonscan.exe": "21361bd3d4c73d38c4f2008429499d9f109c65270322bdc33ba2b452a33d06c5",
+    "pythonscan-gui.exe": "5f5f631585e8f414d28f16f087e2c73b1d2681359e5fc15d87a432753319754c"
+  },
+  "database_embedded": false,
+  "database_archive": "../../vulnerability-db/versions",
+  "note": "Copied from already verified local development artifacts; GitHub v0.1.0 release unchanged."
+}
